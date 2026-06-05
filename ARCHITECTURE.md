@@ -1,9 +1,10 @@
 # rahulagents — 5-Agent Video→Backend Pipeline
 
-Turn a **video** into a **reviewed, tested backend implementation** through five
-staged agents, with **one human approval gate** before any code is written, and an
-optional **nightly** build run. Everything security-sensitive runs **locally** on
-your machine, where your Ruby/Rack security library lives.
+Turn a **video** into **reviewed, tested feature work** on The Yard Platform through
+five staged agents, with **one human approval gate** before any code is written, and an
+optional **nightly** build run. It plugs into the existing **story-driven-development**
+workflow and **Rack Library** standards (Next.js + Supabase + Stripe, RLS-scoped
+security). Everything runs **locally**; the target build is `C:\workspace\py2026`.
 
 ```
 Agent 1 ─► Agent 2 ─► Agent 3 ─►  ⛔ APPROVAL GATE  ─► Agent 4 (nightly) ─► Agent 5
@@ -54,23 +55,22 @@ created → downloaded → requirements_done → stories_done → AWAITING_APPRO
 | 2 | **Requirements + screenshots** | yes | `agents/agent2_requirements/` (vendored video2spec) | ✅ ready |
 | 3 | **Project + user stories** | yes | `agents/agent3_stories.py` (Claude API, reads the SRS) | ✅ ready |
 | ⛔ | **Approval gate** | you | `pipeline approve` in chat | ✅ ready |
-| 4 | **Implementation** | yes | `agents/agent4_contract.md` — the contract Agent 4 follows | ⏳ needs your Rack security library |
-| 5 | **Reviewer** | yes | `agents/agent5_review.md` — test + validate spec | ⏳ needs your test/lint commands |
+| 4 | **Implementation** | yes | `agents/agent4_contract.md` — = your story-driven run loop | 📝 contract drafted, awaiting sign-off |
+| 5 | **Reviewer** | yes | `agents/agent5_review.md` — `tsc`+`build`+`lint`+RLS/security | ✅ ready |
 
-## What's pending your input (Agents 4 & 5)
+## Activation (Agents 4 & 5)
 
-Agent 4 implements against **your** conventions, so before it writes a line of code:
+Both are now **filled from your Rack Library + `py2026`** — Next.js + Supabase + Stripe,
+TS strict, RLS-scoped, validate with `npx tsc --noEmit` / `npm run build` / `npm run lint`,
+commit-no-push. To switch Agent 4 on:
 
-1. **Point me at your Ruby/Rack security library** (repo URL or local path). I read it
-   and fill in `agents/agent4_contract.md` — the explicit rules Agent 4 must follow
-   (auth/session middleware, route protection, error handling, test setup). **You
-   sign off on that contract before any implementation runs.**
-2. **Tell me the green commands** for Agent 5 (e.g. `bundle exec rspec`, `rake test`,
-   `brakeman`).
-3. **Nightly time** (e.g. 01:00) and the **target backend repo** for the PRs.
+1. **Review `agents/agent4_contract.md`** and change its header to `STATUS: APPROVED`
+   (the orchestrator refuses to build until then).
+2. **Confirm target + schedule** — default target `C:\workspace\py2026`, nightly time TBD.
 
-Recommended: run Agent 4 **once in the daytime together** on the first story to tune
-the contract, then enable the nightly schedule.
+Recommended: run the **first story together in daylight** to tune the contract, then
+enable the nightly schedule (your existing `claude-scheduler.sh` pattern, pointed at the
+target repo's `.stories/`).
 
 ## Security & safety boundaries
 

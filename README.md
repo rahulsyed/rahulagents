@@ -1,9 +1,10 @@
 # rahulagents
 
-A **5-agent pipeline** that turns a **video** into a **reviewed, tested backend
-implementation** — with a human approval gate before any code is written and an
-optional nightly build run. Security-sensitive work runs **locally**, on your machine,
-using your own Ruby/Rack security library.
+A **5-agent pipeline** that turns a **video** into **reviewed, tested feature work** on
+The Yard Platform — with a human approval gate before any code is written and an optional
+nightly build run. It plugs into the existing **story-driven-development** workflow and
+**Rack Library** standards (Next.js + Supabase + Stripe; RLS-scoped security). Everything
+runs **locally**, on your machine. Target build: `C:\workspace\py2026`.
 
 ```
 Agent 1 ─► Agent 2 ─► Agent 3 ─►  ⛔ APPROVAL GATE  ─► Agent 4 (nightly) ─► Agent 5
@@ -53,19 +54,23 @@ approve …`**, etc.
 
 | Stage | Ready? |
 |---|---|
-| Agents 1–3 (download → SRS → stories) + approval gate | ✅ scaffolded |
-| Agent 4 (implementation) | ⏳ needs your Rack security library to fill `agent4_contract.md` (+ your sign-off) |
-| Agent 5 (review) | ⏳ needs your green commands (test / security lint) |
-| Nightly schedule | ⏳ set a time once Agent 4 is activated |
+| Agents 1–3 (download → SRS → stories) + approval gate | ✅ scaffolded, emits your `.stories/*.md` format |
+| Agent 4 (implementation) | 📝 contract **drafted from your Rack Library** — awaiting your sign-off |
+| Agent 5 (review) | ✅ `tsc --noEmit` + `build` + `lint` + RLS/security/pre-migration checks |
+| Nightly schedule | ⏳ set a time once you sign off the contract |
 
-**To activate Agents 4–5:** point me at your Ruby/Rack security library and give me your
-test/lint commands. I read the library, fill the contract with concrete file-referenced
-rules, and you sign off **before** any code is written. Recommended: run the first story
-together in daylight to tune the contract, then turn on the nightly run.
+**Validation (Agent 5), from `apps/web/`:** `npx tsc --noEmit` → `npm run build` → `npm run lint`,
+plus the Supabase pre-migration audit + RLS/secret checks (see `agents/agent5_review.md`).
+
+**To activate Agent 4:** review `agents/agent4_contract.md` (drafted from `_RackLibrary/`
++ `py2026`), then change its header to `STATUS: APPROVED`. The orchestrator refuses to
+build until it's signed. Recommended: run the first story together in daylight, then
+enable the nightly run.
 
 ## Safety
 
-- `pipeline/` run data, secrets, and API keys are gitignored — this public repo holds
-  the **framework only**.
-- Agent 4 is branch-only, one-story-per-PR, must use your security middleware, scoped to
-  the backend repo, budgeted, and stops on red. Nothing lands on `main` without you.
+- `pipeline/` run data, secrets, and API keys are gitignored — this public repo holds the
+  **framework only**, never run artifacts or customer data.
+- Agent 4 follows the story-driven loop **exactly**: one story per run, scoped to the
+  story's `Files to Modify`, RLS-scoped Supabase, validate → commit, **never push**.
+  `status: done` = "Deploy Ready"; you flip deploy. Nothing unapproved is ever `pending`.

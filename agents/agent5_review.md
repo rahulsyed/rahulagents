@@ -1,36 +1,37 @@
-# Agent 5 — Reviewer / Validation Spec
+# Agent 5 — Reviewer / Validation Spec (Axlr8 / The Yard Platform)
 
-> **STATUS: PENDING** the green commands for your backend (test + security lint).
+> **STATUS: READY** (commands derived from `py2026` + the Rack Library).
 
-Agent 5 runs after Agent 4 on each `feature/<STORY-ID>` branch. It validates the work,
-writes a report, and opens (or updates) the pull request. It is the gate between
-"implemented" and "ready for your morning review."
+Agent 5 runs after Agent 4 on each implemented story. Much of it is already the
+"Validate" step of your story loop; Agent 5 adds the security/RLS conformance checks
+and writes the verdict.
 
-## What it checks (in order)
+## Checks (in order), run from `apps/web/`
 
-1. **Build / boot.** App boots clean. `PENDING: <command, e.g. bundle exec rackup --dry-run>`
-2. **Tests.** Full suite green. `PENDING: <e.g. bundle exec rspec>`
-   - Plus: each acceptance criterion of the story maps to at least one passing test.
-3. **Security lint.** `PENDING: <e.g. brakeman -q>` — no new warnings.
-4. **Security-contract conformance.** Every new/changed route goes through the security
-   middleware from `agent4_contract.md` (no unprotected endpoints, no bespoke auth).
-5. **Diff hygiene.** Change is scoped to the story; no stray files; no secrets committed
-   (scan the diff for keys/tokens).
+1. **Types** — `npx tsc --noEmit` → zero errors (TS strict, no `any`).
+2. **Build** — `npm run build` (`next build`) → succeeds.
+3. **Lint** — `npm run lint` (`eslint`) → no new errors.
+4. **Acceptance criteria** — each criterion in the story maps to evidence (a test, a
+   build artifact, or a verifiable code path).
+5. **Security / RLS conformance:**
+   - Any new/changed domain table has an **RLS policy scoped by `tenant_id`**.
+   - DB changes followed the **pre-migration schema audit** (ALTER vs CREATE).
+   - Protected routes go through Supabase middleware; API routes validate with **Zod**.
+   - No regressions vs `py2026/SECURITY-AUDIT-SUMMARY.txt`,
+     `SUPABASE-ARCHITECTURE-AUDIT.md`, `STRIPE-PAYMENT-AUDIT.md`.
+6. **Diff hygiene** — change scoped to the story's `Files to Modify`; no stray files; no
+   secrets in the diff (scan for keys/tokens); `.env*` not staged.
 
-## Outputs
+## Verdict
 
-- `pipeline/<name>/runs/<date>/<STORY-ID>-review.md` — verdict + evidence (test output,
-  lint output, acceptance-criteria coverage table).
-- **PR per story** with the review report in the body, labeled `needs-human-review`.
-- Updates `state.json`: story → `built` on green, or `in_progress` + reason on red.
+- **GREEN** → story `status: done`, `completed: <date>`, committed (NO push). "Deploy
+  Ready" on the Story Board; you flip deploy.
+- **RED** → story `status: failed` + `error: "<reason>"`, branch/work-in-place left for
+  triage. Security/RLS failures are **never** auto-fixed past — they wait for you.
 
-## Verdict rules
+## Output
 
-- **GREEN** → PR opened, story marked built, ready for you to merge.
-- **RED** → branch kept, PR draft (or none), story left `in_progress`, failure logged.
-  Agent 4 does **not** auto-retry security failures — those wait for you.
-
-## How I fill this in
-
-Tell me your green commands (test run, security lint, boot check). I wire them here and
-into the orchestrator so the nightly run validates exactly the way you do by hand.
+- A short report per story (types/build/lint output, acceptance-criteria coverage,
+  security checklist) written alongside the story (mirrors the existing
+  `STORY-0XX_Test_Report.html` pattern in `py2026/`).
+- Lessons logged to `_RackLibrary/lessons/<area>.md` per the rack's "after any task" rule.

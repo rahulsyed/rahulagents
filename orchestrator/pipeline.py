@@ -60,7 +60,9 @@ def cmd_new(source, name, model):
     d = proj_dir(name)
     os.makedirs(os.path.join(d, "inbox"), exist_ok=True)
     st = load_state(name) or {"name": name, "source": source, "stage": "created",
-                              "stories": [], "approved": [], "built": [], "runs": []}
+                              "stories": [], "approved": [], "built": [], "runs": [],
+                              "target_repo": os.environ.get("TARGET_REPO", r"C:\workspace\py2026"),
+                              "target_stories": ".stories"}
     save_state(name, st)
     log(f"== Project '{name}' ==")
 
@@ -117,11 +119,32 @@ def cmd_approve(name, ids):
     if not st:
         return log(f"unknown project: {name}")
     ids = st["stories"] if ids == ["all"] else ids
-    st["approved"] = sorted(set(st["approved"]) | set(i for i in ids if i in st["stories"]))
+    newly = [i for i in ids if i in st["stories"] and i not in st["approved"]]
+    st["approved"] = sorted(set(st["approved"]) | set(newly))
     if st["stage"] == "AWAITING_APPROVAL":
         st["stage"] = "approved"
     save_state(name, st)
+
+    # Cross the gate into the LIVE repo: copy approved story files to the target
+    # project's .stories/, flipping status: blocked -> pending so the build loop sees them.
+    staging = os.path.join(proj_dir(name), "stories")
+    target = os.path.join(st["target_repo"], st["target_stories"])
+    copied = 0
+    if os.path.isdir(staging) and os.path.isdir(st["target_repo"]):
+        os.makedirs(target, exist_ok=True)
+        for sid in newly:
+            src = os.path.join(staging, f"{sid}.md")
+            if os.path.isfile(src):
+                md = open(src, encoding="utf-8").read()
+                md = re.sub(r"(?m)^status:\s*blocked.*$", "status: pending", md)
+                with open(os.path.join(target, f"{sid}.md"), "w", encoding="utf-8") as f:
+                    f.write(md)
+                copied += 1
     log(f"approved {len(st['approved'])} stories for '{name}': {', '.join(st['approved'])}")
+    if copied:
+        log(f"  -> copied {copied} to {target} as status: pending (build loop will pick them up)")
+    elif not os.path.isdir(st["target_repo"]):
+        log(f"  (target repo {st['target_repo']} not found - set TARGET_REPO or edit state.json)")
     log(f"build now with:  pipeline build {name}   (or wait for the nightly run)")
 
 
@@ -133,11 +156,11 @@ def cmd_build(name):
     if not todo:
         return log(f"[{name}] nothing to build (no approved-unbuilt stories).")
     contract = os.path.join(AGENTS, "agent4_contract.md")
-    filled = os.path.isfile(contract) and "PENDING:" not in open(contract, encoding="utf-8").read()
-    if not filled:
-        log(f"[{name}] Agent 4 is NOT YET ACTIVATED.")
-        log("   agents/agent4_contract.md must be filled from your Rack security library first.")
-        log(f"   Would build these stories on feature branches: {', '.join(todo)}")
+    signed = os.path.isfile(contract) and "STATUS: APPROVED" in open(contract, encoding="utf-8").read()
+    if not signed:
+        log(f"[{name}] Agent 4 is NOT YET ACTIVATED (contract awaiting sign-off).")
+        log("   agents/agent4_contract.md is a DRAFT. Approve it (header -> 'STATUS: APPROVED') first.")
+        log(f"   Approved-unbuilt stories that WOULD build: {', '.join(todo)}")
         return
     # Activated path is intentionally left to the Claude Code agent driving this repo,
     # following agent4_contract.md + agent5_review.md. The orchestrator records intent:

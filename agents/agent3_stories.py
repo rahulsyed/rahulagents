@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""agent3_stories.py - turn an SRS into an epics -> user-stories backlog (Claude API).
+"""agent3_stories.py - SRS -> story-driven backlog in the Rack Library format.
 
 Usage:
     python agents/agent3_stories.py <srs.html> <out_dir>
 
-Reads the rendered SRS (Agent 2 output), extracts the requirements/text, and asks
-Claude to produce a backlog of user stories grouped by epic, each with a stable id,
-acceptance criteria, and a trace back to the FR-* requirement(s). Writes:
-    <out_dir>/backlog.json   (machine-readable; the orchestrator reads ids from here)
-    <out_dir>/backlog.md     (human review at the approval gate)
+Reads the rendered SRS (Agent 2) and asks Claude to produce user stories in Rahul's
+exact story-driven-development format (see _RackLibrary/workflows/story-driven-development.md
+and py2026/.stories/STORY-001.md). Writes, into <out_dir> (a STAGING area, not the live
+repo):
+    STORY-NNN.md        one file per story, frontmatter + body, status: blocked
+    backlog.json        machine-readable index (orchestrator reads ids/priorities)
+    backlog.md          human review for the approval gate
+
+Stories are written `status: blocked` = AWAITING APPROVAL. The orchestrator's `approve`
+copies approved stories into the target project's .stories/ flipped to `status: pending`,
+where the existing scheduler / Agent 4 builds them. Nothing unapproved is ever pending.
 
 Requires ANTHROPIC_API_KEY. Default model claude-opus-4-8 (AGENT_MODEL to override).
-Stories are sequenced shared-spine-first; the orchestrator gates implementation on
-your per-story approval.
 """
 import json
 import os
@@ -21,7 +25,7 @@ import sys
 
 MODEL = os.environ.get("AGENT_MODEL", "claude-opus-4-8")
 
-STORY_SCHEMA = {
+SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {
         "stories": {
@@ -29,63 +33,105 @@ STORY_SCHEMA = {
             "items": {
                 "type": "object", "additionalProperties": False,
                 "properties": {
-                    "id": {"type": "string"},          # e.g. STORY-01
-                    "epic": {"type": "string"},
+                    "id": {"type": "string"},            # STORY-001
                     "title": {"type": "string"},
-                    "as_a": {"type": "string"},
-                    "i_want": {"type": "string"},
-                    "so_that": {"type": "string"},
+                    "epic": {"type": "string"},
+                    "priority": {"type": "string"},       # high|medium|low
+                    "description": {"type": "string"},
                     "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+                    "files_to_modify": {"type": "array", "items": {"type": "string"}},
+                    "reference_files": {"type": "array", "items": {"type": "string"}},
                     "traces_to": {"type": "array", "items": {"type": "string"}},
-                    "priority": {"type": "string"},     # MUST/SHOULD/COULD
                     "depends_on": {"type": "array", "items": {"type": "string"}},
+                    "notes": {"type": "string"},
                 },
-                "required": ["id", "epic", "title", "as_a", "i_want", "so_that",
-                             "acceptance_criteria", "traces_to", "priority", "depends_on"],
+                "required": ["id", "title", "epic", "priority", "description",
+                             "acceptance_criteria", "files_to_modify", "reference_files",
+                             "traces_to", "depends_on", "notes"],
             },
         }
     },
     "required": ["stories"],
 }
 
-SYSTEM = """You are a senior product owner. From a Software Requirements Specification \
-you produce an implementation-ready backlog of user stories grouped by epic.
+SYSTEM = """You are a senior product owner for Axlr8's The Yard Platform (a Next.js +
+Supabase + Stripe SaaS for pickleball/padel/golf-sim venues). From an SRS you produce
+an implementation-ready backlog in the team's exact story-driven-development format.
 
 Rules:
-- One story = one shippable slice. Give each a stable id STORY-NN.
-- Every story must trace to one or more FR-*/NFR-* requirement ids from the SRS.
-- Acceptance criteria are concrete and testable (Given/When/Then style is fine).
+- One story = one shippable slice. Stable id STORY-NN, sequential.
+- Every story traces to one or more FR-*/NFR-* ids from the SRS (traces_to).
+- Acceptance criteria are concrete and testable.
 - Sequence foundational/shared stories first; set depends_on accordingly.
-- Carry the requirement's priority (MUST/SHOULD/COULD).
+- priority is high|medium|low (map MUST->high, SHOULD->medium, COULD->low).
+- files_to_modify / reference_files use the canonical Next.js monorepo layout
+  (apps/web/src/app/(protected)/..., apps/web/src/lib/<feature>/...,
+  packages/db/migrations/...). Best-effort paths the implementer will confirm.
+- Respect locked decisions: Supabase RLS scoped by tenant_id, modular bounded contexts
+  (booking, programs, lessons, leagues, waivers, comms), tenant_settings white-label.
 - Do not invent scope beyond the SRS."""
 
 
 def srs_text(path):
     html = open(path, encoding="utf-8").read()
-    # crude tag strip - enough to feed requirements/prose to the model
     html = re.sub(r"<script.*?</script>", " ", html, flags=re.S)
     html = re.sub(r"<style.*?</style>", " ", html, flags=re.S)
-    html = re.sub(r"data:image/[^\"']+", "", html)  # drop base64 blobs
+    html = re.sub(r"data:image/[^\"']+", "", html)
     text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"\s+", " ", text)
-    return text[:60000]
+    return re.sub(r"\s+", " ", text)[:60000]
 
 
-def to_md(stories):
-    out = ["# Backlog (review, then approve with `pipeline approve <name> <ids|all>`)\n"]
+def yaml_list(key, items, indent=0):
+    pad = " " * indent
+    if not items:
+        return f"{pad}{key}: []\n"
+    out = f"{pad}{key}:\n"
+    for it in items:
+        out += f'{pad}  - "{str(it).replace(chr(34), chr(39))}"\n'
+    return out
+
+
+def story_md(s, created):
+    fm = "---\n"
+    fm += f'id: {s["id"]}\n'
+    fm += f'title: "{s["title"].replace(chr(34), chr(39))}"\n'
+    fm += f'epic: "{s["epic"]}"\n'
+    fm += "status: blocked        # AWAITING APPROVAL — approve to flip to pending\n"
+    fm += f'priority: {s["priority"]}\n'
+    fm += f"created: {created}\n"
+    fm += "completed:\n"
+    fm += "error: null\n"
+    fm += yaml_list("files_to_modify", s["files_to_modify"])
+    fm += yaml_list("reference_files", s["reference_files"])
+    fm += yaml_list("acceptance_criteria", s["acceptance_criteria"])
+    if s.get("traces_to"):
+        fm += yaml_list("traces_to", s["traces_to"])
+    if s.get("depends_on"):
+        fm += yaml_list("depends_on", s["depends_on"])
+    fm += "---\n\n"
+    body = f"## Description\n\n{s['description']}\n\n## Acceptance Criteria\n\n"
+    body += "".join(f"- [ ] {c}\n" for c in s["acceptance_criteria"])
+    body += "\n## Files to Modify\n\n" + "".join(f"- `{f}`\n" for f in s["files_to_modify"])
+    if s.get("reference_files"):
+        body += "\n## Reference Files\n\n" + "".join(f"- `{f}`\n" for f in s["reference_files"])
+    if s.get("notes"):
+        body += f"\n## Notes / Edge Cases\n\n{s['notes']}\n"
+    return fm + body
+
+
+def backlog_md(stories):
+    out = ["# Proposed backlog — review, then `pipeline approve <name> <ids|all>`\n",
+           "All stories are `status: blocked` (awaiting approval). Approving copies them",
+           "into the target project's `.stories/` as `status: pending` for the build loop.\n"]
     by_epic = {}
     for s in stories:
         by_epic.setdefault(s["epic"], []).append(s)
     for epic, items in by_epic.items():
         out.append(f"\n## {epic}\n")
         for s in items:
-            dep = f" (depends on {', '.join(s['depends_on'])})" if s["depends_on"] else ""
-            out.append(f"### {s['id']} — {s['title']}  `{s['priority']}`{dep}")
-            out.append(f"*As a* {s['as_a']}, *I want* {s['i_want']}, *so that* {s['so_that']}.")
-            out.append("**Acceptance criteria:**")
-            out += [f"- {c}" for c in s["acceptance_criteria"]]
-            out.append(f"*Traces to:* {', '.join(s['traces_to'])}\n")
-    return "\n".join(out)
+            dep = f" — depends on {', '.join(s['depends_on'])}" if s.get("depends_on") else ""
+            out.append(f"- **{s['id']}** ({s['priority']}) {s['title']}{dep}  ·  traces: {', '.join(s.get('traces_to', []))}")
+    return "\n".join(out) + "\n"
 
 
 def main():
@@ -101,19 +147,25 @@ def main():
     client = anthropic.Anthropic()
 
     resp = client.messages.create(
-        model=MODEL, max_tokens=16000, thinking={"type": "adaptive"},
+        model=MODEL, max_tokens=20000, thinking={"type": "adaptive"},
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content":
-                   "Produce the user-story backlog from this SRS:\n\n" + srs_text(srs)}],
-        output_config={"format": {"type": "json_schema", "schema": STORY_SCHEMA}},
+                   "Produce the story-driven backlog from this SRS:\n\n" + srs_text(srs)}],
+        output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
     )
     text = next(b.text for b in resp.content if b.type == "text")
-    data = json.loads(text)
+    stories = json.loads(text)["stories"]
+
+    # created date: pass via env to stay deterministic; fall back to a fixed placeholder
+    created = os.environ.get("PIPELINE_DATE", "2026-06-05")
+    for s in stories:
+        with open(os.path.join(out, f"{s['id']}.md"), "w", encoding="utf-8") as f:
+            f.write(story_md(s, created))
     with open(os.path.join(out, "backlog.json"), "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        json.dump({"stories": stories}, f, indent=2, ensure_ascii=False)
     with open(os.path.join(out, "backlog.md"), "w", encoding="utf-8") as f:
-        f.write(to_md(data["stories"]))
-    print(f"[agent3] wrote {len(data['stories'])} stories to {out}")
+        f.write(backlog_md(stories))
+    print(f"[agent3] wrote {len(stories)} story files (status: blocked) to {out}")
     return 0
 
 
