@@ -1,0 +1,22 @@
+# Per-project run data — videos, screenshots, transcripts, SRS, story backlogs,
+# implementation logs. Never commit (may contain customer data + is large).
+pipeline/
+
+# Secrets
+.env
+*.key
+**/settings.local.json
+
+# Python / model caches
+__pycache__/
+*.pyc
+.venv/
+venv/
+.cache/
+
+# Agent 2 (vendored video2spec) local run output, if any
+agents/agent2_requirements/out/
+
+# OS
+Thumbs.db
+.DS_Store
