@@ -29,7 +29,8 @@ def main():
 
     template = os.path.join(out, "source.%(ext)s")
     # Prefer an mp4 the rest of the pipeline (ffmpeg) handles cleanly.
-    subprocess.run([ytdlp, "-f", "mp4/bestvideo*+bestaudio/best",
+    # --no-playlist: a URL with &list= must still fetch only the single video.
+    subprocess.run([ytdlp, "--no-playlist", "-f", "mp4/bestvideo*+bestaudio/best",
                     "--merge-output-format", "mp4", "-o", template, url], check=True)
 
     files = [f for f in os.listdir(out) if f.startswith("source.")]

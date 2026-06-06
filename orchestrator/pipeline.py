@@ -40,7 +40,7 @@ def proj_dir(name):
 
 def load_state(name):
     p = os.path.join(proj_dir(name), "state.json")
-    return json.load(open(p, encoding="utf-8")) if os.path.isfile(p) else None
+    return json.load(open(p, encoding="utf-8-sig")) if os.path.isfile(p) else None
 
 
 def save_state(name, st):
@@ -61,7 +61,9 @@ def cmd_new(source, name, model):
     os.makedirs(os.path.join(d, "inbox"), exist_ok=True)
     st = load_state(name) or {"name": name, "source": source, "stage": "created",
                               "stories": [], "approved": [], "built": [], "runs": [],
-                              "target_repo": os.environ.get("TARGET_REPO", r"C:\workspace\py2026"),
+                              # Self-contained by default. rahulagents NEVER writes into py2026.
+                              # Set TARGET_REPO only to point at a DEDICATED, separate backend repo.
+                              "target_repo": os.environ.get("TARGET_REPO", ""),
                               "target_stories": ".stories"}
     save_state(name, st)
     log(f"== Project '{name}' ==")
@@ -125,26 +127,30 @@ def cmd_approve(name, ids):
         st["stage"] = "approved"
     save_state(name, st)
 
-    # Cross the gate into the LIVE repo: copy approved story files to the target
-    # project's .stories/, flipping status: blocked -> pending so the build loop sees them.
+    # Cross the gate: write approved stories as status: pending. SELF-CONTAINED by
+    # default -> they land in pipeline/<name>/approved/ inside rahulagents. They are
+    # ONLY copied into an external repo if you explicitly set a DEDICATED target_repo
+    # (never py2026 unless you deliberately point there).
     staging = os.path.join(proj_dir(name), "stories")
-    target = os.path.join(st["target_repo"], st["target_stories"])
+    self_out = os.path.join(proj_dir(name), "approved")
+    os.makedirs(self_out, exist_ok=True)
+    ext_target = os.path.join(st["target_repo"], st["target_stories"]) if st.get("target_repo") else None
+    if ext_target:
+        os.makedirs(ext_target, exist_ok=True)
     copied = 0
-    if os.path.isdir(staging) and os.path.isdir(st["target_repo"]):
-        os.makedirs(target, exist_ok=True)
-        for sid in newly:
-            src = os.path.join(staging, f"{sid}.md")
-            if os.path.isfile(src):
-                md = open(src, encoding="utf-8").read()
-                md = re.sub(r"(?m)^status:\s*blocked.*$", "status: pending", md)
-                with open(os.path.join(target, f"{sid}.md"), "w", encoding="utf-8") as f:
-                    f.write(md)
-                copied += 1
+    for sid in newly:
+        src = os.path.join(staging, f"{sid}.md")
+        if not os.path.isfile(src):
+            continue
+        md = re.sub(r"(?m)^status:\s*blocked.*$", "status: pending", open(src, encoding="utf-8").read())
+        open(os.path.join(self_out, f"{sid}.md"), "w", encoding="utf-8").write(md)
+        if ext_target:
+            open(os.path.join(ext_target, f"{sid}.md"), "w", encoding="utf-8").write(md)
+        copied += 1
     log(f"approved {len(st['approved'])} stories for '{name}': {', '.join(st['approved'])}")
-    if copied:
-        log(f"  -> copied {copied} to {target} as status: pending (build loop will pick them up)")
-    elif not os.path.isdir(st["target_repo"]):
-        log(f"  (target repo {st['target_repo']} not found - set TARGET_REPO or edit state.json)")
+    log(f"  -> {copied} written as status: pending to {self_out}  (self-contained; py2026 untouched)")
+    if ext_target:
+        log(f"  -> also mirrored to dedicated target {ext_target}")
     log(f"build now with:  pipeline build {name}   (or wait for the nightly run)")
 
 

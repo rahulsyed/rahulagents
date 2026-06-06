@@ -9,11 +9,16 @@ Agent 4 implements **only approved user stories**, one per run, locally in Claud
 following your Rack Library standards exactly. It does **not** invent stack, structure,
 or conventions — it reuses what's already settled.
 
-## Target
+## Target — SEPARATE from py2026
 
-- **Repo:** `C:\workspace\py2026\` — The Yard Platform (Next.js 16 monorepo). *(Change
-  here if a story targets a different project.)*
-- **Canonical loop:** `C:\workspace\py2026\CLAUDE.md` + `_RackLibrary/workflows/story-driven-development.md`.
+- **Repo:** a **dedicated, separate** project repo, set per run via `TARGET_REPO`
+  (or `state.json` → `target_repo`). **rahulagents never writes into `py2026`.** Default
+  is empty → fully self-contained: approved stories live in
+  `rahulagents/pipeline/<name>/approved/` and build nowhere until you point at a repo.
+- **Standards are reused, the codebase is not** — Agent 4 follows the Rack Library
+  conventions (`_RackLibrary/stacks/`, `workflows/`, `lessons/`) but applies them inside
+  the dedicated target repo, keeping this work isolated from The Yard Platform.
+- **Canonical loop:** `_RackLibrary/workflows/story-driven-development.md`.
 - **Stack (locked):** Next.js App Router · TypeScript **strict (no `any`)** · Tailwind 4 ·
   Supabase (Postgres + Auth + **RLS** + Realtime + Storage) · Stripe · Resend · Twilio ·
   Vercel · Zod · lucide-react. See `_RackLibrary/stacks/nextjs-supabase-stripe.md`.

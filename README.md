@@ -21,6 +21,7 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the full design.
 rahulagents/
 ├── ARCHITECTURE.md                 # the design (state machine, gate, nightly, safety)
 ├── orchestrator/pipeline.py        # state machine: new / status / approve / build / night
+├── dashboard/build_dashboard.py    # → dashboard/index.html: link → SRS → stories → traces
 ├── agents/
 │   ├── agent1_download.py          # ✅ download a video (yt-dlp)
 │   ├── agent2_requirements/        # ✅ vendored video2spec (SRS + screenshots)
@@ -45,7 +46,19 @@ python orchestrator/pipeline.py build pickleyard
 
 # the scheduled nightly entry point builds approved-unbuilt stories across all projects
 python orchestrator/pipeline.py night
+
+# visualize every run: which link ran, its SRS, story count, and traceability
+python dashboard/build_dashboard.py   # → open dashboard/index.html
 ```
+
+## Separation from py2026
+
+This pipeline is **completely self-contained**. All run data lives under
+`rahulagents/pipeline/<name>/`, and approved stories are written to
+`pipeline/<name>/approved/` — **nothing is ever written into `py2026`**. It only mirrors
+into an external repo if you *deliberately* set `TARGET_REPO` to a **dedicated, separate**
+project (not py2026). The Rack Library *standards* are reused; the py2026 *codebase* is not
+touched.
 
 In Claude Code you can drive the same flow with **`/pipeline new …`**, **`/pipeline
 approve …`**, etc.
