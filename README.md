@@ -48,7 +48,10 @@ python orchestrator/pipeline.py build pickleyard
 python orchestrator/pipeline.py night
 
 # visualize every run: which link ran, its SRS, story count, and traceability
-python dashboard/build_dashboard.py   # → open dashboard/index.html
+python dashboard/build_dashboard.py            # static → open dashboard/index.html
+python dashboard/build_dashboard.py --serve    # live, auto-refreshing → http://localhost:8770
+#   live mode: per-run "Open SRS" + "Browse stories" (each story in-browser) + a
+#   Requirement → stories reverse map; rebuilds on every page load as new runs land.
 ```
 
 ## Separation from py2026
