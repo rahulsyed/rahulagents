@@ -72,6 +72,15 @@ Recommended: run the **first story together in daylight** to tune the contract, 
 enable the nightly schedule (your existing `claude-scheduler.sh` pattern, pointed at the
 target repo's `.stories/`).
 
+## Dashboard
+
+`dashboard/build_dashboard.py` renders every run (link → SRS → stories → traceability)
+either as a static `index.html` or as a live server that rebuilds on each request.
+`--phone` binds it to the LAN and prints a QR code (`dashboard/qr.py`, a small
+dependency-free encoder) so you can pull the dashboard up on a phone over the same Wi-Fi;
+`/phone` shows the same code in the browser. LAN exposure is opt-in — plain `--serve`
+stays on `127.0.0.1`.
+
 ## Security & safety boundaries
 
 - The pipeline `pipeline/` run data, any API keys, and downloaded videos are

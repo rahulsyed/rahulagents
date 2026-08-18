@@ -22,6 +22,7 @@ rahulagents/
 ├── ARCHITECTURE.md                 # the design (state machine, gate, nightly, safety)
 ├── orchestrator/pipeline.py        # state machine: new / status / approve / build / night
 ├── dashboard/build_dashboard.py    # → dashboard/index.html: link → SRS → stories → traces
+├── dashboard/qr.py                 # tiny dependency-free QR encoder (--phone)
 ├── agents/
 │   ├── agent1_download.py          # ✅ download a video (yt-dlp)
 │   ├── agent2_requirements/        # ✅ vendored video2spec (SRS + screenshots)
@@ -50,9 +51,38 @@ python orchestrator/pipeline.py night
 # visualize every run: which link ran, its SRS, story count, and traceability
 python dashboard/build_dashboard.py            # static → open dashboard/index.html
 python dashboard/build_dashboard.py --serve    # live, auto-refreshing → http://localhost:8770
+python dashboard/build_dashboard.py --phone    # live + open it on your phone (see below)
 #   live mode: per-run "Open SRS" + "Browse stories" (each story in-browser) + a
 #   Requirement → stories reverse map; rebuilds on every page load as new runs land.
 ```
+
+### Open it on your phone
+
+`--phone` serves the dashboard on your **local network** instead of just `localhost`, and
+prints a scannable QR code in the terminal:
+
+```bash
+python dashboard/build_dashboard.py --phone          # or: --phone 8770
+```
+
+```
+Dashboard live -> http://localhost:8770  (Ctrl+C to stop; rebuilds each load)
+On your phone  -> http://192.168.1.20:8770   (same Wi-Fi — scan this):
+
+    ▄▄▄▄▄▄▄  ▄▄ ▄ ▄▄  ▄▄▄▄▄▄▄
+    █ ▄▄▄ █ ▀▄█▀ ▄█ █ █ ▄▄▄ █      ← point your phone camera at it
+    ...
+```
+
+Scan it, or type the URL. Your phone must be on the **same Wi-Fi** as this machine. The
+same code is also at **`/phone`** in the browser (bigger, and the reliable option if your
+terminal renders the blocks oddly). The whole dashboard is responsive, so run cards,
+stats, and the story tables read fine on a phone screen.
+
+Two notes: `--phone` binds to `0.0.0.0`, so **anyone on your local network can reach the
+dashboard while it runs** — use it on a network you trust, and `Ctrl+C` when you're done.
+Windows will also ask you to allow Python through the firewall the first time (choose
+Private networks). Plain `--serve` stays localhost-only.
 
 ## Separation from py2026
 
